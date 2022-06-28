@@ -1,126 +1,76 @@
-attacker[active]
-
-principal Bob[
-knows private b
-gb = G^b
-generates bo
-gbo = G^bo
-sig = SIGN(b,gbo)
-]
-
-Bob -> Alice:[sig],[gb],[gbo]
-
-principal Alice[
-knows private a
-ga = G^a
-vrf = SIGNVERIF(gb,gbo,sig)  
-sharekey_a = gb^a
-a_snd1,a_snd2 = HKDF(MAC(sharekey_a,nil),nil,nil)
-]
-principal Alice[
-generates ae
-gae = G^ae
-generates m1
-enc1 = AEAD_ENC(a_snd1,m1,HASH(ga,gb,gae))
-]
-
-Alice -> Bob :enc1,[ga],[gae]
+free c: channel.
+type key [private].
+type pkey [private].
+type skey [private].
+fun pk(key):pkey.
+fun sky(key):skey.
+free k : key [private].
 
 
-principal Bob[
-sharekey_b = ga^b 
-b_rec_1, b_rec_2 = HKDF(MAC(sharekey_b,nil),nil,nil)
-dec1 = AEAD_DEC(b_rec_1,enc1,HASH(ga,gb,gae))
-]
-principal Bob[
-generates be
-gbe = G^be
-sharekey_b2 = gae^be
-sharekey_b2_hash10,sharekey_b2_hash20 = HKDF(MAC(sharekey_b2,nil),nil,nil)
-]
-principal Bob[
-generates m2 
-enc2 = AEAD_ENC(sharekey_b2_hash10,m2,HASH(ga,gb,gbe))
-]
+fun sign (bitstring,skey):bitstring .
+reduc forall m: bitstring , k:key ; checksign(sign(m,sky(k)),pk(k))= m.
 
-Bob -> Alice :enc2,[gbe]
+fun aenc(bitstring,pkey):bitstring .
+reduc forall m: bitstring , k: key ; adec(aenc(m, pk(k)),sky(k)) = m.
+
+fun comb(pkey,key):pkey.
+
+reduc forall m:bitstring, k:key  ; HKDF(comb(pk(k),k),k) = sky(k). 
 
 
+query attacker (k).
 
-principal Alice[
-sharekey_a2 = gbe^ae
-sharekey_a2_hash_10,sharekey_a2_hash_20 = HKDF(MAC(sharekey_a2,nil),nil,nil)
-dec2 = AEAD_DEC(sharekey_a2_hash_10,enc2,HASH(ga,gb,gbe))
-]
+let Bob (pkB:pkey,skB:skey, kB:key) = 
+in (c,pkx:pkey);
+in (c,mx:bitstring);
+let (x:bitstring,skx:skey )= checksign(mx,pkx) in
+new m0 :bitstring ;
+out (c, aenc(m0 , pkx));
+in (c,mz00:bitstring);
+let mz00_:bitstring = adec(mz00,skB) in
+let (mn_:bitstring,k_:key) = adec(mz00_,skB) in
+out (c,aenc(aenc((mn_,kB),comb(pkB,k_)),pkx)).
 
-principal clara[
-knows private c 
-gc = G^c
-generates co
-gco = G^co
-sigc = SIGN(c,gco)
-]
-clara -> Alice :[sigc],[gc],[gco]
 
-principal Alice[
-sigc_V = SIGNVERIF(gc,gco,sigc)  
-sharekey_Ac = gc^a
-Ac_pub_hash1_sharekey_10 ,Ac_pub_hash1_sharekey_00 = HKDF(MAC(sharekey_Ac,nil),nil,nil)
-]
-principal Alice[
-generates a_c
-comb = CONCAT(ga,gb)
-enc_c = AEAD_ENC(Ac_pub_hash1_sharekey_10,a_c,comb)
-]
+let Alice (pkA:pkey,skA:skey) =
+out (c, pkA);
+in (c,pky:pkey);
+new m: bitstring;
+out (c, sign(m,skA));
+in(c,my:bitstring);
+let my_ = adec(my,skA) in
+in (c,pkz:pkey);
+in (c,mz:bitstring);
+let (mz_:bitstring,skz:skey) = checksign(mz,pkz) in
+out(c,aenc((mz_,pky),pkz ));
+in (c,mz0:bitstring);
+let mz0_:bitstring = adec(mz0,skA) in
+out(c,aenc(mz0_,pky));
+in(c,my00:bitstring);
+let my001:bitstring =adec(my00,skA) in
+out (c,aenc(my001,pkz)).
 
-Alice -> clara :enc_c,[ga],[comb]
+let Clara(pkC:pkey,skC:skey)=
+out (c,pkC);
+in(c,pkx0:pkey);
+new m1 :bitstring;
+out(c, sign(m1,skC));
+in (c,mx0:bitstring);
+let (=m1, pky0:pkey) =adec(mx0,skC) in
+new mn:bitstring;
+new k :key;
+out (c,aenc(aenc((mn,k),pky0),pkx0));
+in (c,my0010:bitstring);
+let my001_:bitstring =adec(my0010,skC) in
+let (=mn, k_:key) = adec(my001_,HKDF(pky0,k)) in
+0.
 
-principal clara[
-sharekey_Ca = ga^c
-Ca_pub_hash1_sharekey_10 ,Ca_pub_hash1_sharekey_00 = HKDF(MAC(sharekey_Ca,nil),nil,nil)
-enc_c_dec = AEAD_DEC(Ca_pub_hash1_sharekey_10,enc_c,comb)
-]
 
-principal clara[
-ga_,gb_ = SPLIT(comb)
-generates username
-secret = AEAD_ENC(gb_,username,gc)
-message = AEAD_ENC(ga,secret,nil )
-]
-clara -> Alice :[message]
+process
+       new sk0 : skey;
+       
+       new l:key;
 
-principal Alice[
-message_= AEAD_DEC(a,message,nil)
-]
-Alice -> Bob : [message_],[gc]
-
-principal Bob[
-message_sec = AEAD_DEC(b,message_,gc)
-]
-
-principal Bob[
-generates bb1 
-gbb1 = G^bb1
-shr_k = gc^bb1
-msg_2_clara = AEAD_ENC(shr_k,message_sec,gbb1)
-comb1 = CONCAT(gc,gbb1)
-msg = AEAD_ENC(ga,msg_2_clara,comb1)
-]
-
-Bob -> Alice :[msg],[comb1]
-principal Alice[
-msg_dec = AEAD_DEC(a,msg,comb1)
-]
-Alice -> clara:[msg_dec],[comb1]
-
-principal clara[
-gc_,gbb1_ = SPLIT(comb1)
-shr_K_2 = gbb1_^c
-msg_dec_dec = AEAD_DEC(shr_k_2,msg_dec,gbb1_)
-
-]
-
-queries[
-
-authentication? Alice -> clara: msg_dec
-]
+       
+       let sk=pk(l)in out ( c, sk );
+           (!Bob(sk,sk0,l))|(!Alice(sk,sk0))|(!Clara(sk,sk0))
